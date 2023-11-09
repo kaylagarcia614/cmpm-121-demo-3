@@ -6,8 +6,8 @@ import "./leafletWorkaround";
 
 
 const ORIGIN = leaflet.latLng({
-    lat: 36.9995,
-    lng: - 122.0533
+    lat: 0,
+    lng: 0
 });
 
 const GAMEPLAY_ZOOM_LEVEL = 19;
