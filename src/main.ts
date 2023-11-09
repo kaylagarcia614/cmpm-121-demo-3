@@ -1,4 +1,5 @@
 import "leaflet/dist/leaflet.css";
+import { Board, Token } from "./elements";
 import "./style.css";
 import leaflet from "leaflet";
 import luck from "./luck";
@@ -10,10 +11,12 @@ const ORIGIN = leaflet.latLng({
     lng: 0
 });
 
-const GAMEPLAY_ZOOM_LEVEL = 19;
+const GAMEPLAY_ZOOM = 19;
 const TILE_DEGREES = 1e-4;
 const NEIGHBORHOOD_SIZE = 8;
-const PIT_SPAWN_PROBABILITY = 0.1;
+const PIT_PROBABILITY = 0.1;
+const board = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
+const pitsOnMap: leaflet.Layer[] = [];
 
 const mapContainer = document.querySelector<HTMLElement>("#map")!;
 const map = createLeaf(mapContainer);
@@ -22,7 +25,6 @@ const PLAYER_LOCATION = leaflet.latLng({
     lat: 36.9995,
     lng: -122.0533,
 });
-const MADE_PITS: Record<string, number> = {};
 
 let playerMarker = moveMarker(null, PLAYER_LOCATION);
 playerMarker = moveMarker(playerMarker, PLAYER_LOCATION);
@@ -30,7 +32,7 @@ map.setView(playerMarker.getLatLng());
 
 generateNeighborhood(PLAYER_LOCATION);
 
-let points = 0;
+const playerTokens: Token[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 statusPanel.innerHTML = "No points yet...";
 
@@ -38,108 +40,80 @@ createSensor();
 createReset();
 
 function makePit(i: number, j: number) {
-    if (pitAlreadyMade(i, j)) {
-        return;
-    }
-    markPitAsMade(i, j);
-
-    const bounds = leaflet.latLngBounds([
-        [ORIGIN.lat + i * TILE_DEGREES, ORIGIN.lng + j * TILE_DEGREES],
-        [ORIGIN.lat + (i + 1) * TILE_DEGREES, ORIGIN.lng + (j + 1) * TILE_DEGREES],
-    ]);
+    const cell = board.getCellFromCoordinates(i, j);
+    const bounds = board.getCellBounds(cell);
 
     const pit = leaflet.rectangle(bounds) as leaflet.Layer;
 
     pit.bindPopup(() => {
-        let value = getPitValue(i, j);
+        const tokens = board.getCellTokens({ i, j });
         const container = document.createElement("div");
         container.innerHTML = `
-                <<div>Pit Location (${i} , ${j}). </br>Capacity: <span id="value">${value}</span></div>
-                <button id="grab">grab</button><button id="deposit">deposit</button>`;
-
-        const grab = container.querySelector<HTMLButtonElement>("#grab")!;
-        grab.addEventListener("click", () => {
-            if (value <= 0) {
-                return;
-            }
-            value--;
-            updatePitValue(i, j, value);
-
-            points++;
-            container.querySelector<HTMLSpanElement>("#value")!.innerHTML = value.toString();
-            updatePanel();
+        <div style="width: 210px">Pit Location (${i} , ${j}). </br>Capacity: <span id="tokens"><button id="deposit">deposit</button></div>`;
+        tokens.forEach((token) => {
+            addTokenButton(tokens, token, container, i, j);
         });
 
         const deposit = container.querySelector<HTMLButtonElement>("#deposit")!;
         deposit.addEventListener("click", () => {
-            if (points <= 0) {
+            if (playerTokens.length <= 0) {
                 return;
             }
-
-            value++;
-            updatePitValue(i, j, value);
-
-            points--;
-
-            container.querySelector<HTMLSpanElement>("#value")!.innerHTML =
-                value.toString();
+            const popped: Token = playerTokens.pop()!;
+            //Add it to bin
+            board.addTokenToCell({ i, j }, popped);
+            addTokenButton(tokens, popped, container, i, j);
+            container.offsetHeight;
             updatePanel();
         });
         return container;
     });
+    addPitToMap(pit);
+}
+
+function addTokenButton(
+    tokens: Token[],
+    token: Token,
+    container: HTMLDivElement,
+    i: number,
+    j: number
+) {
+    const tk = container.querySelector("#tokens");
+    const internal = document.createElement("div");
+
+    internal.innerHTML = `<div>(${token.id}). <button id = "tokenGrab">Grab</button></div>`;
+    tk?.append(internal);
+
+    const btn = internal.querySelector("#tokenGrab");
+    btn?.addEventListener("click", () => {
+        const popped = board.popTokenFromCell({ i, j }, tokens.indexOf(token));
+
+        internal.style.display = "none";
+
+        playerTokens.push(popped);
+        updatePanel();
+    });
+}
+
+function addPitToMap(pit: leaflet.Layer) {
     pit.addTo(map);
+    pitsOnMap.push(pit);
 }
 
-function getPitKey(i: number, j: number) {
-    return i + "|" + j;
-}
+function removeAllPits() {
+    pitsOnMap.forEach((pit) => {
+        pit.removeFrom(map);
+    });
 
-function markPitAsMade(i: number, j: number) {
-    const key = getPitKey(i, j);
-    MADE_PITS[key] = Math.floor(luck([i, j, "initialValue"].toString()) * 4 + 1);
-    //console.log("Marking ", i, ",", j);
+    //Clear the array
+    pitsOnMap.length = 0;
 }
-
-function pitAlreadyMade(i: number, j: number) {
-    const key = getPitKey(i, j);
-    if (MADE_PITS[key]) {
-        //console.log("Pit ", i, ",", j, " already made.");
-        return true;
-    }
-    return false;
-}
-
-function getPitValue(i: number, j: number) {
-    const key = getPitKey(i, j);
-    return MADE_PITS[key];
-}
-
-function updatePitValue(i: number, j: number, value: number) {
-    const key = getPitKey(i, j);
-    MADE_PITS[key] = value;
-}
-
-function generateNeighborhood(center: leaflet.LatLng) {
-    const I_OFFSET = Math.floor((center.lat - ORIGIN.lat) / TILE_DEGREES);
-    const J_OFFSET = Math.floor((center.lng - ORIGIN.lng) / TILE_DEGREES);
-    for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-        for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-            if (
-                luck([i + I_OFFSET, j + J_OFFSET].toString()) < PIT_SPAWN_PROBABILITY
-            ) {
-                makePit(i + I_OFFSET, j + J_OFFSET);
-            }
-        }
-    }
-}
-
 function getBoxCords(center: leaflet.LatLng) {
     const I = Math.floor((center.lat - ORIGIN.lat) / TILE_DEGREES);
     const J = Math.floor((center.lng - ORIGIN.lng) / TILE_DEGREES);
     return { i: I, j: J };
 }
 
-// navigator.geolocation.watchPosition() calls internal function when the position changes
 function createSensor() {
     const sensorButton = document.querySelector("#sensor")!;
     sensorButton.addEventListener("click", () => {
@@ -158,15 +132,6 @@ function createSensor() {
     });
 }
 
-function createReset() {
-    const resetButton = document.querySelector("#reset")!;
-    resetButton.addEventListener("click", () => {
-        playerMarker.setLatLng(ORIGIN);
-        moveMarker(playerMarker, ORIGIN);
-        map.setView(playerMarker.getLatLng());
-        generateNeighborhood(playerMarker.getLatLng());
-    });
-}
 function addLeaf(map: leaflet.Map | leaflet.LayerGroup) {
     leaflet
         .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -180,17 +145,21 @@ function addLeaf(map: leaflet.Map | leaflet.LayerGroup) {
 function createLeaf(mapCont: string | HTMLElement) {
     const map = leaflet.map(mapCont, {
         center: ORIGIN,
-        zoom: GAMEPLAY_ZOOM_LEVEL,
-        minZoom: GAMEPLAY_ZOOM_LEVEL,
-        maxZoom: GAMEPLAY_ZOOM_LEVEL,
-        zoomControl: false,
+        zoom: GAMEPLAY_ZOOM,
+        maxZoom: GAMEPLAY_ZOOM,
+        minZoom: GAMEPLAY_ZOOM,
         scrollWheelZoom: false,
+        zoomControl: false,
     });
     return map;
 }
 
 function updatePanel() {
-    statusPanel.innerHTML = `${points} points accumulated`;
+    let str = "";
+    playerTokens.forEach((tkn) => {
+        str += "[" + tkn.id + "] ";
+    });
+    statusPanel.innerHTML = "Collected Tokens: " + str;
 }
 function moveMarker(marker: leaflet.Marker | null, location: leaflet.LatLng) {
     let MARKER = marker;
@@ -200,9 +169,28 @@ function moveMarker(marker: leaflet.Marker | null, location: leaflet.LatLng) {
         MARKER.setLatLng(location);
     }
     const cL = getBoxCords(location);
-    MARKER.bindTooltip("your here! (" + cL.i + " , " + cL.j + ")");
+    MARKER.bindTooltip("You're right here (" + cL.i + " , " + cL.j + ")");
     MARKER.addTo(map);
     return MARKER;
 }
 
-
+function generateNeighborhood(center: leaflet.LatLng) {
+    removeAllPits();
+    const { i, j } = board.getCellForPoint(center);
+    for (let cellI = -NEIGHBORHOOD_SIZE; cellI < NEIGHBORHOOD_SIZE; cellI++) {
+        for (let cellJ = -NEIGHBORHOOD_SIZE; cellJ < NEIGHBORHOOD_SIZE; cellJ++) {
+            if (luck([i + cellI, j + cellJ].toString()) < PIT_PROBABILITY) {
+                makePit(i + cellI, j + cellJ);
+            }
+        }
+    }
+}
+function createReset() {
+    const resetButton = document.querySelector("#reset")!;
+    resetButton.addEventListener("click here", () => {
+        playerMarker.setLatLng(ORIGIN);
+        moveMarker(playerMarker, ORIGIN);
+        map.setView(playerMarker.getLatLng());
+        generateNeighborhood(playerMarker.getLatLng());
+    });
+}
