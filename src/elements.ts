@@ -4,6 +4,10 @@ interface Cell {
     readonly j: number;
     readonly i: number;
 }
+interface Momento {
+    readonly key: string;
+    readonly ts: Token[];
+}
 export class Token {
     readonly id: string;
     constructor(i: number, j: number, serial: number) {
@@ -79,5 +83,21 @@ export class Board {
             [cell.i * this.tileWidth, cell.j * this.tileWidth],
             [(cell.i + 1) * this.tileWidth, (cell.j + 1) * this.tileWidth],
         ]);
+    }
+    togoMomento(): string[] {
+        const momentos: string[] = [];
+        for (const [key, ts] of this.knownCellTokens) {
+            const m: Momento = { key, ts };
+            momentos.push(JSON.stringify(m));
+        }
+        return momentos;
+    }
+
+    fromMomento(momentos: string[]) {
+        this.knownCellTokens.clear();
+        for (const m of momentos) {
+            const momento: Momento = JSON.parse(m);
+            this.knownCellTokens.set(momento.key, momento.ts);
+        }
     }
 }

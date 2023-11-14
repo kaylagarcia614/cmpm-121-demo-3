@@ -28,17 +28,19 @@ const WEST = leaflet.latLng(0, -MOVEMENT_AMOUNT);
 const SOUTH = leaflet.latLng(-MOVEMENT_AMOUNT, 0);
 const EAST = leaflet.latLng(0, MOVEMENT_AMOUNT);
 
-const PLAYER_LOCATION = leaflet.latLng({
+let PLAYER_LOCATION = leaflet.latLng({
     lat: 36.9995,
     lng: -122.0533,
 });
 
 let playerMarker = moveMarker(null, PLAYER_LOCATION);
 
-const playerTokens: Token[] = [];
+let playerTokens: Token[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 statusPanel.innerHTML = "No points yet...";
-
+console.log(localStorage);
+restoreStateFromLocalStorage();
+updatePanel();
 addLeaf(map);
 
 playerMarker = moveMarker(playerMarker, PLAYER_LOCATION);
@@ -53,39 +55,46 @@ addMovementDirection("north", NORTH);
 addMovementDirection("south", SOUTH);
 addMovementDirection("east", EAST);
 addMovementDirection("west", WEST);
-
+addSaveButton();
 addClearLocalStorageButton();
 
 function makePit(i: number, j: number) {
     const cell = { i, j };
     const bounds = board.getCellBounds(cell);
-
     const pit = leaflet.rectangle(bounds) as leaflet.Layer;
+    pit.bindPopup(
+        () => {
+            const container = updatePopupContent(i, j, pit);
 
-    pit.bindPopup(() => {
-        const tokens = board.getCellTokens({ i, j });
-        const container = document.createElement("div");
-        container.innerHTML = `
-        <div style="width: 210px">Pit Location (${i} , ${j}). </br>Capacity: <span id="tokens"><button id="deposit">deposit</button></div>`;
-        const deposit = container.querySelector<HTMLButtonElement>("#deposit")!;
-        tokens.forEach((token) => {
-            addTokenButton(tokens, token, container, i, j);
-        });
-
-        deposit.addEventListener("click", () => {
-            if (playerTokens.length <= 0) {
-                return;
-            }
-            const popped: Token = playerTokens.pop()!;
-            //Add it to bin
-            board.addTokenToCell({ i, j }, popped);
-            addTokenButton(tokens, popped, container, i, j);
-            container.offsetHeight;
-            updatePanel();
-        });
-        return container;
-    });
+            return container;
+        }
+        //{ closeOnClick: false, autoClose: false }
+    );
     addPitToMap(pit);
+}
+
+function updatePopupContent(
+    i: number,
+    j: number,
+    pit: leaflet.Layer
+): HTMLDivElement {
+    const tokens = board.getCellTokens({ i, j });
+    const container = document.createElement("div");
+    container.innerHTML = `
+        <div style="width: 210px">Pit Location (${i} , ${j}). </br>Capacity: <span id="tokens"></div>`;
+    tokens.forEach((token) => {
+        addTokenButton(tokens, token, container, i, j, pit);
+    });
+
+    playerTokens.forEach((token) => {
+        addDepositButton(playerTokens, token, container, i, j, pit);
+    });
+    pit.bindPopup(container, {});
+    setTimeout(() => {
+        pit.openPopup();
+    }, 0);
+
+    return container;
 }
 
 function addTokenButton(
@@ -93,7 +102,8 @@ function addTokenButton(
     token: Token,
     container: HTMLDivElement,
     i: number,
-    j: number
+    j: number,
+    pit: leaflet.Layer
 ) {
     const tk = container.querySelector("#tokens");
     const internal = document.createElement("div");
@@ -109,9 +119,36 @@ function addTokenButton(
 
         playerTokens.push(popped);
         updatePanel();
+        updatePopupContent(i, j, pit);
     });
 }
+function addDepositButton(
+    tokens: Token[],
+    token: Token,
+    container: HTMLDivElement,
+    i: number,
+    j: number,
+    pit: leaflet.Layer
+) {
+    const tk = container.querySelector("#tokens");
+    const internal = document.createElement("div");
 
+    internal.innerHTML = `<div>(${token.id}). <button id = "tokenDeposit">Deposit</button></div>`;
+    tk?.append(internal);
+
+    const btn = internal.querySelector("#tokenDeposit");
+    btn?.addEventListener("click", () => {
+        console.log("Deposit");
+        const index = tokens.indexOf(token);
+        const popped = tokens.splice(index, 1)[0];
+
+        internal.style.display = "none";
+
+        board.addTokenToCell({ i, j }, popped);
+        updatePanel();
+        updatePopupContent(i, j, pit);
+    });
+}
 function addPitToMap(pit: leaflet.Layer) {
     pit.addTo(map);
     pitsOnMap.push(pit);
@@ -174,7 +211,7 @@ function updatePanel() {
     playerTokens.forEach((tkn) => {
         str += "[" + tkn.id + "] ";
     });
-    statusPanel.innerHTML = "Collected Tokens: " + str;
+    statusPanel.innerHTML = "collected Tokens: " + str;
 }
 function moveMarker(marker: leaflet.Marker | null, location: leaflet.LatLng) {
     let MARKER = marker;
@@ -239,4 +276,46 @@ function addMovementDirection(direction: string, amount: leaflet.LatLng) {
 
 function centerMap(point: leaflet.LatLng) {
     map.setView(point);
+}
+function addSaveButton() {
+    const button = document.querySelector<HTMLButtonElement>("#save");
+    button?.addEventListener("click", () => {
+        const reset = confirm("save?");
+        if (reset) {
+            console.log("yes");
+            storeStateToLocalStorage();
+            console.log(localStorage);
+        } else {
+            console.log("no");
+        }
+    });
+}
+
+function storeStateToLocalStorage() {
+    const boardMomento = JSON.stringify(board.togoMomento());
+    const playerMomento = JSON.stringify(playerTokens);
+    const playerPositionMomento = JSON.stringify(playerMarker.getLatLng());
+
+    localStorage.setItem("boardMomento", boardMomento);
+    localStorage.setItem("playerMomento", playerMomento);
+    localStorage.setItem("playerPositionMomento", playerPositionMomento);
+}
+
+function restoreStateFromLocalStorage() {
+    const boardMomento = localStorage.getItem("boardMomento");
+    const playerMomento = localStorage.getItem("playerMomento");
+    const playerPositionMomento = localStorage.getItem("playerPositionMomento");
+    if (
+        boardMomento == null ||
+        playerMomento == null ||
+        playerPositionMomento == null
+    ) {
+        return;
+    }
+    const bM: string[] = JSON.parse(boardMomento);
+    const pT: Token[] = JSON.parse(playerMomento);
+    const pP: leaflet.LatLng = JSON.parse(playerPositionMomento);
+    board.fromMomento(bM);
+    playerTokens = pT;
+    PLAYER_LOCATION = pP;
 }
