@@ -84,20 +84,27 @@ export class Board {
             [(cell.i + 1) * this.tileWidth, (cell.j + 1) * this.tileWidth],
         ]);
     }
-    togoMomento(): string[] {
+    boardTogoMomento(): string[] {
         const momentos: string[] = [];
         for (const [key, ts] of this.knownCellTokens) {
             const m: Momento = { key, ts };
-            momentos.push(JSON.stringify(m));
+            momentos.push(this.togoMomento(m));
         }
         return momentos;
     }
 
-    fromMomento(momentos: string[]) {
+    boardFromMomento(momentos: string[]) {
         this.knownCellTokens.clear();
         for (const m of momentos) {
-            const momento: Momento = JSON.parse(m);
-            this.knownCellTokens.set(momento.key, momento.ts);
+            this.fromMomento(m);
         }
+    }
+    togoMomento(m: Momento) {
+        return JSON.stringify(m);
+    }
+    fromMomento(s: string) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const m: Momento = JSON.parse(s);
+        this.knownCellTokens.set(m.key, m.ts);
     }
 }

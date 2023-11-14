@@ -292,7 +292,7 @@ function addSaveButton() {
 }
 
 function storeStateToLocalStorage() {
-    const boardMomento = JSON.stringify(board.togoMomento());
+    const boardMomento = JSON.stringify(board.boardTogoMomento());
     const playerMomento = JSON.stringify(playerTokens);
     const playerPositionMomento = JSON.stringify(playerMarker.getLatLng());
 
@@ -315,7 +315,7 @@ function restoreStateFromLocalStorage() {
     const bM: string[] = JSON.parse(boardMomento);
     const pT: Token[] = JSON.parse(playerMomento);
     const pP: leaflet.LatLng = JSON.parse(playerPositionMomento);
-    board.fromMomento(bM);
+    board.boardFromMomento(bM);
     playerTokens = pT;
     PLAYER_LOCATION = pP;
 }
