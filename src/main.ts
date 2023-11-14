@@ -16,31 +16,48 @@ const TILE_DEGREES = 1e-4;
 const NEIGHBORHOOD_SIZE = 8;
 const PIT_PROBABILITY = 0.1;
 const board = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
-const pitsOnMap: leaflet.Layer[] = [];
+
 
 const mapContainer = document.querySelector<HTMLElement>("#map")!;
 const map = createLeaf(mapContainer);
-addLeaf(map);
+const pitsOnMap: leaflet.Layer[] = [];
+
+const MOVEMENT_AMOUNT = 0.0001;
+const NORTH = leaflet.latLng(MOVEMENT_AMOUNT, 0);
+const WEST = leaflet.latLng(0, -MOVEMENT_AMOUNT);
+const SOUTH = leaflet.latLng(-MOVEMENT_AMOUNT, 0);
+const EAST = leaflet.latLng(0, MOVEMENT_AMOUNT);
+
 const PLAYER_LOCATION = leaflet.latLng({
     lat: 36.9995,
     lng: -122.0533,
 });
 
 let playerMarker = moveMarker(null, PLAYER_LOCATION);
-playerMarker = moveMarker(playerMarker, PLAYER_LOCATION);
-map.setView(playerMarker.getLatLng());
-
-generateNeighborhood(PLAYER_LOCATION);
 
 const playerTokens: Token[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 statusPanel.innerHTML = "No points yet...";
 
+addLeaf(map);
+
+playerMarker = moveMarker(playerMarker, PLAYER_LOCATION);
+centerMap(playerMarker.getLatLng());
+
+generateNeighborhood(PLAYER_LOCATION);
+
 createSensor();
 createReset();
 
+addMovementDirection("north", NORTH);
+addMovementDirection("south", SOUTH);
+addMovementDirection("east", EAST);
+addMovementDirection("west", WEST);
+
+addClearLocalStorageButton();
+
 function makePit(i: number, j: number) {
-    const cell = board.getCellFromCoordinates(i, j);
+    const cell = { i, j };
     const bounds = board.getCellBounds(cell);
 
     const pit = leaflet.rectangle(bounds) as leaflet.Layer;
@@ -50,11 +67,11 @@ function makePit(i: number, j: number) {
         const container = document.createElement("div");
         container.innerHTML = `
         <div style="width: 210px">Pit Location (${i} , ${j}). </br>Capacity: <span id="tokens"><button id="deposit">deposit</button></div>`;
+        const deposit = container.querySelector<HTMLButtonElement>("#deposit")!;
         tokens.forEach((token) => {
             addTokenButton(tokens, token, container, i, j);
         });
 
-        const deposit = container.querySelector<HTMLButtonElement>("#deposit")!;
         deposit.addEventListener("click", () => {
             if (playerTokens.length <= 0) {
                 return;
@@ -105,7 +122,6 @@ function removeAllPits() {
         pit.removeFrom(map);
     });
 
-    //Clear the array
     pitsOnMap.length = 0;
 }
 function getBoxCords(center: leaflet.LatLng) {
@@ -126,7 +142,7 @@ function createSensor() {
                     lng: position.coords.longitude,
                 })
             );
-            map.setView(playerMarker.getLatLng());
+            centerMap(playerMarker.getLatLng());
             generateNeighborhood(playerMarker.getLatLng());
         });
     });
@@ -137,7 +153,6 @@ function addLeaf(map: leaflet.Map | leaflet.LayerGroup) {
         .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
             maxZoom: 19,
             attribution:
-                // eslint-disable-next-line @typescript-eslint/quotes
                 '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         })
         .addTo(map);
@@ -187,10 +202,41 @@ function generateNeighborhood(center: leaflet.LatLng) {
 }
 function createReset() {
     const resetButton = document.querySelector("#reset")!;
-    resetButton.addEventListener("click here", () => {
+    resetButton.addEventListener("click", () => {
         playerMarker.setLatLng(ORIGIN);
-        moveMarker(playerMarker, ORIGIN);
-        map.setView(playerMarker.getLatLng());
+        playerMarker = moveMarker(playerMarker, ORIGIN);
+        centerMap(playerMarker.getLatLng());
         generateNeighborhood(playerMarker.getLatLng());
     });
+}
+function addClearLocalStorageButton() {
+    const button = document.querySelector<HTMLButtonElement>("#clear");
+    button?.addEventListener("click", () => {
+        const reset = confirm("reset?");
+        if (reset) {
+            localStorage.clear();
+        }
+    });
+}
+function addMovementDirection(direction: string, amount: leaflet.LatLng) {
+    const dir = "#" + direction;
+    const button = document.querySelector<HTMLButtonElement>(dir);
+
+    button?.addEventListener("click", () => {
+        const pLocation = playerMarker.getLatLng();
+        console.log(direction);
+        playerMarker = moveMarker(
+            playerMarker,
+            leaflet.latLng({
+                lat: pLocation.lat + amount.lat,
+                lng: pLocation.lng + amount.lng,
+            })
+        );
+        generateNeighborhood(playerMarker.getLatLng());
+        centerMap(playerMarker.getLatLng());
+    });
+}
+
+function centerMap(point: leaflet.LatLng) {
+    map.setView(point);
 }
