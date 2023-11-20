@@ -35,6 +35,12 @@ export class Board {
         }
         return this.knownCellTokens.get(key)!;
     }
+    getPointFromCell(c: Cell): leaflet.LatLng {
+        const lat = c.i * this.tileWidth + this.tileWidth / 2;
+        const lng = c.j * this.tileWidth + this.tileWidth / 2;
+
+        return leaflet.latLng(lat, lng);
+    }
 
     addTokenToCell(cellCord: CellCoordinate, token: Token) {
         const tokens = this.getCanonicalTokens(cellCord);
@@ -106,5 +112,11 @@ export class Board {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const m: Momento = JSON.parse(s);
         this.knownCellTokens.set(m.key, m.ts);
+    }
+    ijFromID(tknID: string) {
+        const splitStr = tknID.split(/:|#/);
+        const i = parseInt(splitStr[0]);
+        const j = parseInt(splitStr[1]);
+        return { i, j };
     }
 }
